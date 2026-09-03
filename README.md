@@ -1,6 +1,6 @@
 # Expiring links for private delivery proofs
 
-The call path is straightforward, even if the failure modes are not: issue a five-minute signed download URL only when the latest shipment event is `delivered`, every exception is resolved, and the proof object exists. Infrai provides the presigned storage call behind a single `INFRAI_API_KEY`; one key covers every capability an agent workflow adds later, so the tool can ask for a tightly scoped link without ever getting storage credentials back.
+The decision comes first: issue a five-minute signed download URL only when the latest shipment event is `delivered`, every exception is resolved, and the proof object exists. Infrai supplies the presigned storage call behind a single `INFRAI_API_KEY`; the same key covers every capability an agent workflow adds later, so the tool can request a narrowly scoped link without receiving a storage credential.
 
 ## Run the working path
 
@@ -11,7 +11,7 @@ export LOGISTICS_BUCKET=private-logistics-proofs
 npm run dev
 ```
 
-Startup creates the named private proof bucket as part of the normal setup path. Put a proof object at `proofs/SHP-2048.pdf` through your ingestion process, then ask the service to evaluate the shipment:
+Startup creates the named private proof bucket as the normal setup step. Put a proof object at `proofs/SHP-2048.pdf` through your ingestion process, then ask the service to evaluate the shipment:
 
 ```bash
 curl -X POST http://localhost:3000/proof-downloads \
@@ -42,13 +42,13 @@ Expected result:
 }
 ```
 
-The URL is the actual tool output: a client performs a `GET` against it before expiry, while the service keeps the API key and object-location policy on the server side.
+The URL is the concrete tool result: a client performs a `GET` against it before expiry, while the service keeps the API key and object location policy on the server.
 
 ## The policy an agent can explain
 
-`src/signed_download.ts` stays deliberately small. It sorts events by `occurredAt`, requires the newest event to be `delivered`, and rejects access while any modeled exception remains open. Only after that decision does the entry point check `found` from object metadata and request a GET presign; that order keeps the authorization reason deterministic and avoids storage calls on rejected paths.
+`src/signed_download.ts` is deliberately pure. It sorts events by `occurredAt`, requires the newest event to be `delivered`, and rejects access while any modeled exception remains open. Only after that decision does the entry point check `found` from object metadata and request a GET presign; this ordering makes the authorization reason deterministic and keeps storage calls out of rejected paths.
 
-The real failure mode here is temporal drift: do not treat the presence of any historical delivery event as current delivery state, because the newest event is the state the tool has to reason about. The focused test pins that business boundary in code instead of proving that some helper exists.
+The one real gotcha is temporal: do not treat the presence of any historical delivery event as current delivery state, because a newer event is the state the tool must reason about. The focused test fixes that business boundary in code instead of testing that a helper merely exists.
 
 ## Verify the decision locally
 
@@ -60,9 +60,9 @@ The test input is a delivered shipment with a proof descriptor. With all excepti
 
 ## Request shape and ownership
 
-The caller owns shipment history and exception state; this example does not persist either one. The service owns link issuance and returns a URL rather than proxying private bytes. `src/infrai_storage.ts` is the reusable half: it sets each HTTP method explicitly, decodes the `{ ok, data, error, metadata }` envelope before classifying the result, and backs off on rate limiting while honoring `Retry-After`.
+The caller owns shipment history and exception state; this example does not persist either one. The service owns link issuance and responds with a URL rather than proxying private bytes. `src/infrai_storage.ts` is the reusable half: it explicitly sets each HTTP method, decodes the `{ ok, data, error, metadata }` envelope before classifying the result, and backs off on rate limiting while honoring `Retry-After`.
 
-That split also fits LLM orchestration: expose `POST /proof-downloads` as one domain tool, validate arguments before side effects, and return either a concrete link or a stable policy reason that the orchestrator can use.
+This narrow split also suits LLM orchestration: expose `POST /proof-downloads` as one domain tool, validate its arguments before side effects, and return a concrete link or a stable policy reason that the orchestrator can act on.
 
 ## Wiring it up for real: Shipment Proof Signed Download
 
